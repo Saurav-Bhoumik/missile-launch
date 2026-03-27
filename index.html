@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Saurav's Missile Launcher</title>
+    <title>Saurav's Tactical Missile Launcher</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
-            background: #000; 
+            background: #000; /* Deep black space for contrast */
             overflow: hidden; 
             font-family: 'Courier New', Courier, monospace;
         }
@@ -30,7 +30,7 @@
 
     <div id="overlay">
         <h2>System Active</h2>
-        <p>Tap Screen to Launch Missile</p>
+        <p>Tap Screen to Launch Tactical Missile</p>
     </div>
     <canvas id="scene"></canvas>
 
@@ -48,6 +48,13 @@
 
         const missiles = [];
         const particles = [];
+        const trails = []; // Independent trail system for smoothness
+
+        // Missile Config
+        const MISSILE_SPEED = 2.5; // Base speed
+        const MISSILE_ACCEL = 1.05; // Acceleration per frame
+        const MISSILE_SIZE_WIDTH = 10; // Missile base width
+        const MISSILE_SIZE_LENGTH = 30; // Missile length (tip to base)
 
         class Missile {
             constructor(x, y, targetX, targetY) {
@@ -58,15 +65,20 @@
                 this.distance = Math.hypot(targetX - x, targetY - y);
                 this.traveled = 0;
                 this.angle = Math.atan2(targetY - y, targetX - x);
-                this.speed = 3;
-                this.accel = 1.06;
-                this.hue = Math.random() * 360;
+                this.speed = MISSILE_SPEED;
+                this.accel = MISSILE_ACCEL;
+                // Hue varies between red/orange for "realism"
+                this.hue = Math.random() < 0.5 ? 0 : 30; // Red or Orange
             }
 
             update(index) {
                 this.speed *= this.accel;
                 let vx = Math.cos(this.angle) * this.speed;
                 let vy = Math.sin(this.angle) * this.speed;
+
+                // Add to independent trails system
+                trails.push({x: this.x, y: this.y, hue: this.hue, alpha: 1});
+
                 this.traveled = Math.hypot(this.x - (this.targetX - Math.cos(this.angle) * this.distance), this.y - (this.targetY - Math.sin(this.angle) * this.distance));
 
                 if (this.speed + this.traveled >= this.distance) {
@@ -79,13 +91,41 @@
             }
 
             draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle + Math.PI / 2); // Rotate to match direction
+
+                // The "Misile" Shape (Triangle/Arrow)
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
-                ctx.fillStyle = `hsl(${this.hue}, 100%, 70%)`;
+                ctx.moveTo(0, -MISSILE_SIZE_LENGTH / 2); // Tip
+                ctx.lineTo(-MISSILE_SIZE_WIDTH / 2, MISSILE_SIZE_LENGTH / 2); // Left base
+                ctx.lineTo(MISSILE_SIZE_WIDTH / 2, MISSILE_SIZE_LENGTH / 2); // Right base
+                ctx.closePath();
+
+                // Core Missile Color
+                ctx.fillStyle = '#eee'; // Light gray/metal body
                 ctx.fill();
-                // Trail effect
-                ctx.shadowBlur = 10;
-                ctx.shadowColor = `hsl(${this.hue}, 100%, 50%)`;
+
+                // Body Outline (Optional, for better definition)
+                ctx.strokeStyle = `hsl(${this.hue}, 100%, 50%)`;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                
+                // Fin details (small protrusions at the base)
+                ctx.fillStyle = `hsl(${this.hue}, 100%, 40%)`; // Fin color
+                ctx.fillRect(-MISSILE_SIZE_WIDTH/2 - 2, MISSILE_SIZE_LENGTH/2 - 5, 2, 8); // Left Fin
+                ctx.fillRect(MISSILE_SIZE_WIDTH/2, MISSILE_SIZE_LENGTH/2 - 5, 2, 8); // Right Fin
+
+                // Exhaust Flame Effect (Behind the missile base)
+                ctx.beginPath();
+                ctx.moveTo(0, MISSILE_SIZE_LENGTH / 2); // Base center
+                ctx.lineTo(-MISSILE_SIZE_WIDTH/4, MISSILE_SIZE_LENGTH / 2 + (Math.random()*15 + 5)); // Flame shape
+                ctx.lineTo(MISSILE_SIZE_WIDTH/4, MISSILE_SIZE_LENGTH / 2 + (Math.random()*15 + 5));
+                ctx.closePath();
+                ctx.fillStyle = `hsl(${Math.random()*20 + 20}, 100%, 60%)`; // Flickering orange/yellow flame
+                ctx.fill();
+
+                ctx.restore();
             }
         }
 
@@ -94,12 +134,12 @@
                 this.x = x;
                 this.y = y;
                 this.angle = Math.random() * Math.PI * 2;
-                this.speed = Math.random() * 8 + 2;
-                this.friction = 0.95;
-                this.gravity = 0.5;
-                this.hue = hue + (Math.random() * 40 - 20);
+                this.speed = Math.random() * 12 + 3; // Slightly faster explosion
+                this.friction = 0.96;
+                this.gravity = 0.8; // Gravity pulls particles down
+                this.hue = hue + (Math.random() * 50 - 25); // Variance in explosion colors
                 this.alpha = 1;
-                this.decay = Math.random() * 0.02 + 0.01;
+                this.decay = Math.random() * 0.03 + 0.015;
             }
 
             update(index) {
@@ -112,24 +152,27 @@
 
             draw() {
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, 1.5, 0, Math.PI * 2);
+                ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
                 ctx.fillStyle = `hsla(${this.hue}, 100%, 60%, ${this.alpha})`;
                 ctx.fill();
             }
         }
 
         function explode(x, y, hue) {
-            // Mobile vibration if supported
-            if (navigator.vibrate) navigator.vibrate(50);
+            // Mobile vibration if supported (very distinct 2 pulses)
+            if (navigator.vibrate) navigator.vibrate([70, 40, 70]);
             
-            for (let i = 0; i < 40; i++) {
+            // Generate distinct smoke/fire particles
+            for (let i = 0; i < 50; i++) { // Slightly more particles
                 particles.push(new Particle(x, y, hue));
             }
         }
 
         function launch(e) {
+            // Mobile and desktop click handling
             const tx = e.touches ? e.touches[0].clientX : e.clientX;
             const ty = e.touches ? e.touches[0].clientY : e.clientY;
+            // Launch from bottom center
             missiles.push(new Missile(width / 2, height, tx, ty));
         }
 
@@ -140,9 +183,28 @@
         });
 
         function animate() {
-            ctx.shadowBlur = 0;
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.shadowBlur = 0; // Disable shadow during clear for speed
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.25)'; // Trail length determined by opacity
             ctx.fillRect(0, 0, width, height);
+
+            // Draw and update trails (the line behind the missile)
+            ctx.lineWidth = 1.5;
+            trails.forEach((t, i) => {
+                ctx.beginPath();
+                ctx.moveTo(t.x, t.y);
+                // A very short line fragment
+                const nextT = trails[i+1];
+                if(nextT) ctx.lineTo(nextT.x, nextT.y);
+                ctx.strokeStyle = `hsla(${t.hue}, 100%, 60%, ${t.alpha})`;
+                ctx.stroke();
+                
+                t.alpha -= 0.04; // Trails fade quickly
+                if(t.alpha <= 0) trails.splice(i, 1);
+            });
+
+            // Re-enable shadow for the actual missile body/particles
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = `rgba(255, 100, 0, 0.5)`;
 
             missiles.forEach((m, i) => { m.draw(); m.update(i); });
             particles.forEach((p, i) => { p.draw(); p.update(i); });
@@ -153,5 +215,4 @@
         animate();
     </script>
 </body>
-  </html>
-  
+</html>
